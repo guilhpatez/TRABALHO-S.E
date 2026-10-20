@@ -1,0 +1,979 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>SemáforoSmart</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: cabeçalho + abas; simulação em duas colunas (palco + painel de monitoramento) */
+:root {
+  --bg: #f1f5f6; --surface: #ffffff; --surface2: #e8eef0; --fg: #12202a; --muted: #566874; --line: #d3dce1;
+  --accent: #0a6f8c; --accent-fg: #ffffff; --good: #17884a; --warn: #c97800; --bad: #cf3a3a; --purple: #6f45c9;
+  --block: #dbe5de; --road: #3a424a; --mark: #e8ecee;
+  --font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --font-body: 'Barlow', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d171c; --surface: #142229; --surface2: #1b2d36; --fg: #e3ebef; --muted: #8fa3af;
+    --line: #2a3d48; --accent: #4cc2e2; --accent-fg: #06222b; --good: #3ccf7a; --warn: #f2a533; --bad: #ff7070; --purple: #a98bff;
+    --block: #17251f; --road: #2a3239; --mark: #c9d0d5; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d171c; --surface: #142229; --surface2: #1b2d36; --fg: #e3ebef; --muted: #8fa3af;
+  --line: #2a3d48; --accent: #4cc2e2; --accent-fg: #06222b; --good: #3ccf7a; --warn: #f2a533; --bad: #ff7070; --purple: #a98bff;
+  --block: #17251f; --road: #2a3239; --mark: #c9d0d5; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1280px; margin: 0 auto; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 700; margin: 0; text-wrap: balance; letter-spacing: .01em; }
+h1 { font-size: 40px; line-height: 1; }
+h2 { font-size: 22px; }
+h3 { font-size: 18px; }
+p { margin: 0; }
+header { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: flex-end; justify-content: space-between; margin-bottom: 18px; }
+.brand { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.brand p { color: var(--muted); max-width: 62ch; }
+.tabs { display: flex; gap: 4px; background: var(--surface2); padding: 4px; border-radius: 10px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+.tabs button, .seg button {
+  border: 0; background: transparent; padding: 8px 14px; border-radius: 7px; font-weight: 600; color: var(--muted);
+}
+.tabs button[aria-selected="true"], .seg button[aria-pressed="true"] { background: var(--surface); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.18); }
+.tabs button:hover, .seg button:hover { color: var(--fg); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg { display: inline-flex; gap: 2px; background: var(--surface2); padding: 3px; border-radius: 9px; flex-wrap: wrap; }
+.seg button { padding: 6px 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (max-width: 1000px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+.stage-bar { display: flex; flex-wrap: wrap; gap: 10px 16px; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.status { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); }
+.status b { color: var(--fg); font-weight: 500; }
+#stage { display: block; width: 100%; height: auto; aspect-ratio: 900 / 620; border-radius: 8px; background: var(--block); }
+.hint { color: var(--muted); font-size: 13px; margin-top: 10px; }
+
+.controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; }
+@media (max-width: 640px) { .controls { grid-template-columns: minmax(0, 1fr); } }
+.ctl label, .lbl { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 6px; gap: 8px; }
+.ctl output { font-family: var(--font-mono); font-weight: 500; color: var(--accent); }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.row.sp { justify-content: space-between; }
+.btn { border: 1px solid var(--line); background: var(--surface2); padding: 8px 14px; border-radius: 8px; font-weight: 600; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.sub-lbl { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+
+.roads { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.rp { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: var(--bg); min-width: 0; }
+.rp-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.tl { display: flex; flex-direction: column; gap: 4px; padding: 5px; background: #0d1316; border-radius: 8px; }
+.tl i { width: 13px; height: 13px; border-radius: 50%; background: #2a3338; display: block; }
+.tl i.r.on { background: #ff4b4b; box-shadow: 0 0 8px #ff4b4b; }
+.tl i.y.on { background: #ffc61a; box-shadow: 0 0 8px #ffc61a; }
+.tl i.g.on { background: #2ee06f; box-shadow: 0 0 8px #2ee06f; }
+.pill { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 99px; background: var(--surface2); color: var(--muted); }
+.pill.on { background: var(--purple); color: #fff; }
+dl.kv { margin: 0; display: grid; gap: 6px; }
+dl.kv div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+dl.kv dt { color: var(--muted); font-size: 13px; }
+dl.kv dd { margin: 0; font-family: var(--font-display); font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.phase { margin-top: 12px; }
+.bar { height: 8px; background: var(--surface2); border-radius: 99px; overflow: hidden; margin-top: 6px; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s linear; }
+.bar i.y { background: #e8a900; } .bar i.r { background: var(--bad); }
+
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.delta { font-weight: 600; font-variant-numeric: tabular-nums; }
+.delta.good { color: var(--good); } .delta.bad { color: var(--bad); } .delta.neu { color: var(--muted); }
+.tbl-scroll { overflow-x: auto; }
+.legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--muted); margin: 10px 0 6px; flex-wrap: wrap; }
+.legend span::before { content: ""; display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; background: var(--c); }
+#chart { width: 100%; height: 120px; display: block; }
+pre.log { margin: 0; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.5; background: #0d1316; color: #9be7b1; padding: 10px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 120px; }
+
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 900px) { .two { grid-template-columns: minmax(0, 1fr); } }
+.diagram-wrap { overflow-x: auto; }
+svg.diagram { display: block; width: 100%; min-width: 720px; height: auto; border-radius: 8px; border: 1px solid var(--line); }
+svg.flow { min-width: 560px; max-width: 820px; }
+ul.rules { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; }
+.note { color: var(--muted); font-size: 13px; margin-top: 10px; }
+code { font-family: var(--font-mono); font-size: .9em; background: var(--surface2); padding: 1px 5px; border-radius: 4px; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+[role=tabpanel] { min-width: 0; }
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>SemáforoSmart</h1>
+      <p>Simulação do cruzamento Avenida × Rua transversal, rodando a mesma lógica do código Arduino. Os dois semáforos recebem exatamente o mesmo tráfego, para a comparação ser justa.</p>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Seções">
+      <button role="tab" id="tab-simulacao" aria-selected="true" aria-controls="panel-simulacao" data-tab="simulacao">Simulação</button>
+      <button role="tab" id="tab-circuito" aria-selected="false" aria-controls="panel-circuito" data-tab="circuito">Circuito Arduino</button>
+      <button role="tab" id="tab-logica" aria-selected="false" aria-controls="panel-logica" data-tab="logica">Lógica de decisão</button>
+    </div>
+  </header>
+
+  <!-- ===================== SIMULAÇÃO ===================== -->
+  <section id="panel-simulacao" role="tabpanel" aria-labelledby="tab-simulacao">
+    <div class="grid">
+      <div class="col">
+        <div class="card">
+          <div class="stage-bar">
+            <div class="seg" role="group" aria-label="Semáforo exibido">
+              <button id="v-smart" aria-pressed="true">Semáforo inteligente</button>
+              <button id="v-fixed" aria-pressed="false">Semáforo fixo</button>
+            </div>
+            <div class="status" id="status" aria-live="off">—</div>
+          </div>
+          <canvas id="stage" width="900" height="620" role="img" aria-label="Vista de cima do cruzamento entre a avenida e a rua transversal, com carros, semáforos e sensores"></canvas>
+          <p class="hint">Linha laranja: sensor IR que conta cada carro que chega. Faixa roxa: HC-SR04 sobre a linha de retenção, acende quando há carro parado. Cada via tem uma faixa e sentido único.</p>
+        </div>
+
+        <div class="card">
+          <div class="sub-lbl">Cenários prontos (reiniciam a medição)</div>
+          <div class="row" id="presets" style="margin-bottom:16px">
+            <button class="btn" data-av="16" data-ru="5">Pico na avenida</button>
+            <button class="btn" data-av="20" data-ru="6">Pico forte</button>
+            <button class="btn" data-av="12" data-ru="12">Equilibrado</button>
+            <button class="btn" data-av="8" data-ru="18">Evento na rua</button>
+            <button class="btn" data-av="4" data-ru="2">Madrugada</button>
+          </div>
+          <div class="controls">
+            <div class="ctl"><label for="r-av">Fluxo na avenida <output id="o-av">16 veíc/min</output></label><input id="r-av" type="range" min="0" max="30" step="1" value="16"></div>
+            <div class="ctl"><label for="r-ru">Fluxo na rua transversal <output id="o-ru">5 veíc/min</output></label><input id="r-ru" type="range" min="0" max="30" step="1" value="5"></div>
+          </div>
+          <div class="row sp" style="margin-top:16px">
+            <div class="row"><span class="sub-lbl" style="margin:0">Velocidade</span>
+              <div class="seg" id="speed" role="group" aria-label="Velocidade da simulação">
+                <button data-s="1" aria-pressed="false">×1</button><button data-s="2" aria-pressed="true">×2</button><button data-s="5" aria-pressed="false">×5</button><button data-s="10" aria-pressed="false">×10</button>
+              </div>
+            </div>
+            <div class="row"><button class="btn" id="pause">Pausar</button><button class="btn primary" id="reset">Reiniciar</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="card">
+          <div class="row sp"><h2>Painel de monitoramento</h2><span class="status" id="clock">00:00</span></div>
+          <div class="roads">
+            <div class="rp"><div class="rp-head"><div class="tl" id="tl0"><i class="r"></i><i class="y"></i><i class="g"></i></div><div><h3>Avenida</h3><span class="pill" id="sens0">fila livre</span></div></div>
+              <dl class="kv"><div><dt>Veículos contados</dt><dd id="n0">0</dd></div><div><dt>Esperando no vermelho</dt><dd id="e0">0</dd></div><div><dt>Fluxo (veíc/min)</dt><dd id="f0">—</dd></div></dl></div>
+            <div class="rp"><div class="rp-head"><div class="tl" id="tl1"><i class="r"></i><i class="y"></i><i class="g"></i></div><div><h3>Rua</h3><span class="pill" id="sens1">fila livre</span></div></div>
+              <dl class="kv"><div><dt>Veículos contados</dt><dd id="n1">0</dd></div><div><dt>Esperando no vermelho</dt><dd id="e1">0</dd></div><div><dt>Fluxo (veíc/min)</dt><dd id="f1">—</dd></div></dl></div>
+          </div>
+          <div class="phase"><div class="row sp"><span class="lbl" style="margin:0" id="phase-name">AV_VERDE</span><span class="status" id="phase-time">0 s</span></div><div class="bar"><i id="phase-bar"></i></div></div>
+        </div>
+
+        <div class="card">
+          <h2 style="margin-bottom:8px">Fixo × inteligente</h2>
+          <div class="tbl-scroll"><table>
+            <thead><tr><th>Métrica</th><th class="num">Fixo</th><th class="num">Inteligente</th><th class="num">Variação</th></tr></thead>
+            <tbody id="cmp"></tbody>
+          </table></div>
+          <div class="legend"><span style="--c:var(--accent)">inteligente</span><span style="--c:var(--warn)">fixo (20 s / 20 s)</span></div>
+          <canvas id="chart" aria-label="Gráfico: veículos parados ao longo do tempo, fixo e inteligente" role="img"></canvas>
+          <p class="note">Veículos parados (inclui os que ainda não entraram no trecho), últimos 6 minutos simulados.</p>
+        </div>
+
+        <div class="card">
+          <div class="row sp" style="margin-bottom:8px"><h2>Saída Serial / MQTT</h2><span class="status">a cada 5 s</span></div>
+          <pre class="log" id="log">aguardando primeira leitura…</pre>
+          <p class="note">É a mesma linha JSON que o Arduino envia ao ESP-01 e publica no tópico <code>semaforosmart/avenida01/telemetria</code>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== CIRCUITO ===================== -->
+  <section id="panel-circuito" role="tabpanel" aria-labelledby="tab-circuito" hidden>
+    <div class="stack">
+      <div class="card">
+        <h2 style="margin-bottom:12px">Esquema de ligação</h2>
+        <div class="diagram-wrap"><svg class="diagram" role="img" aria-label="Esquema de ligação do Arduino UNO com sensores, LEDs, LCD e ESP-01" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 790" >
+<rect width="1100" height="790" fill="#ffffff"/>
+<text x="40" y="42" font-size="22" text-anchor="start" font-weight="700" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >SemáforoSmart — esquema de ligação (Arduino UNO)</text>
+<text x="40" y="64" font-size="13" text-anchor="start" font-weight="400" fill="#4b5563" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Cruzamento Avenida × Rua transversal · 2 sensores IR · 2 HC-SR04 · 6 LEDs · LCD I²C · ESP-01 (Wi-Fi)</text>
+<rect x="400" y="100" width="280" height="500" rx="14" fill="#0e7c86" stroke="#0a5a62" stroke-width="3"/>
+<text x="540.0" y="340" font-size="26" text-anchor="middle" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >ARDUINO</text>
+<text x="540.0" y="368" font-size="26" text-anchor="middle" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >UNO</text>
+<text x="540.0" y="394" font-size="12" text-anchor="middle" font-weight="400" fill="#d1f2f5" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >ATmega328P</text>
+<circle cx="510" cy="100" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="510" y="120" font-size="12" text-anchor="middle" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >5V</text>
+<circle cx="570" cy="100" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="570" y="120" font-size="12" text-anchor="middle" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >GND</text>
+<line x1="510" y1="100" x2="510" y2="84" stroke="#dc2626" stroke-width="3"/>
+<line x1="570" y1="100" x2="570" y2="84" stroke="#111827" stroke-width="3"/>
+<text x="520" y="80" font-size="11" text-anchor="start" font-weight="600" fill="#dc2626" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" transform="translate(0,0)">→ trilha + da protoboard (5 V)</text>
+<text x="580" y="96" font-size="11" text-anchor="middle" font-weight="400" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" ></text>
+<text x="690" y="84" font-size="11" text-anchor="start" font-weight="600" fill="#111827" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >GND → trilha – da protoboard</text>
+<rect x="40" y="116" width="210" height="68" rx="8" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2"/><text x="120.0" y="140.2" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Sensor IR FC-51</text>
+<text x="120.0" y="156.2" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >AVENIDA (contagem)</text>
+<text x="145" y="176" font-size="10" text-anchor="middle" font-weight="400" fill="#6b7280" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >VCC→5V · GND→GND</text>
+<line x1="400" y1="150" x2="250" y2="150" stroke="#e07b00" stroke-width="3"/><circle cx="250" cy="150" r="4" fill="#e07b00"/><text x="242" y="144" font-size="11" text-anchor="end" font-weight="700" fill="#e07b00" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >OUT</text>
+<circle cx="400" cy="150" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="412" y="154" font-size="12" text-anchor="start" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >D8</text>
+<rect x="40" y="196" width="210" height="68" rx="8" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2"/><text x="120.0" y="220.2" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Sensor IR FC-51</text>
+<text x="120.0" y="236.2" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >RUA (contagem)</text>
+<text x="145" y="256" font-size="10" text-anchor="middle" font-weight="400" fill="#6b7280" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >VCC→5V · GND→GND</text>
+<line x1="400" y1="230" x2="250" y2="230" stroke="#e07b00" stroke-width="3"/><circle cx="250" cy="230" r="4" fill="#e07b00"/><text x="242" y="224" font-size="11" text-anchor="end" font-weight="700" fill="#e07b00" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >OUT</text>
+<circle cx="400" cy="230" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="412" y="234" font-size="12" text-anchor="start" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >D9</text>
+<rect x="40" y="292" width="210" height="94" rx="8" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2"/><text x="120.0" y="329.2" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >HC-SR04</text>
+<text x="120.0" y="345.2" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >AVENIDA (fila parada)</text>
+<text x="145" y="378" font-size="10" text-anchor="middle" font-weight="400" fill="#6b7280" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >VCC→5V · GND→GND</text>
+<line x1="400" y1="320" x2="250" y2="320" stroke="#7b3fe4" stroke-width="3"/><circle cx="250" cy="320" r="4" fill="#7b3fe4"/><text x="242" y="314" font-size="11" text-anchor="end" font-weight="700" fill="#7b3fe4" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >TRIG</text>
+<line x1="400" y1="350" x2="250" y2="350" stroke="#7b3fe4" stroke-width="3"/><circle cx="250" cy="350" r="4" fill="#7b3fe4"/><text x="242" y="344" font-size="11" text-anchor="end" font-weight="700" fill="#7b3fe4" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >ECHO</text>
+<circle cx="400" cy="320" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="412" y="324" font-size="12" text-anchor="start" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >D10</text>
+<circle cx="400" cy="350" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="412" y="354" font-size="12" text-anchor="start" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >D11</text>
+<rect x="40" y="412" width="210" height="94" rx="8" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2"/><text x="120.0" y="449.2" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >HC-SR04</text>
+<text x="120.0" y="465.2" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >RUA (fila parada)</text>
+<text x="145" y="498" font-size="10" text-anchor="middle" font-weight="400" fill="#6b7280" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >VCC→5V · GND→GND</text>
+<line x1="400" y1="440" x2="250" y2="440" stroke="#7b3fe4" stroke-width="3"/><circle cx="250" cy="440" r="4" fill="#7b3fe4"/><text x="242" y="434" font-size="11" text-anchor="end" font-weight="700" fill="#7b3fe4" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >TRIG</text>
+<line x1="400" y1="470" x2="250" y2="470" stroke="#7b3fe4" stroke-width="3"/><circle cx="250" cy="470" r="4" fill="#7b3fe4"/><text x="242" y="464" font-size="11" text-anchor="end" font-weight="700" fill="#7b3fe4" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >ECHO</text>
+<circle cx="400" cy="440" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="412" y="444" font-size="12" text-anchor="start" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >A2</text>
+<circle cx="400" cy="470" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="412" y="474" font-size="12" text-anchor="start" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >A3</text>
+<rect x="700" y="122" width="350" height="132" rx="10" fill="#f0f5fb"/>
+<rect x="700" y="302" width="350" height="132" rx="10" fill="#f0f5fb"/>
+<text x="704" y="117" font-size="12" text-anchor="start" font-weight="700" fill="#1d4ed8" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >AVENIDA</text>
+<text x="704" y="297" font-size="12" text-anchor="start" font-weight="700" fill="#1d4ed8" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >RUA TRANSVERSAL</text>
+<circle cx="680" cy="150" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="668" y="154" font-size="12" text-anchor="end" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >D2</text>
+<line x1="680" y1="150" x2="730" y2="150" stroke="#d92d20" stroke-width="3"/>
+<rect x="730" y="142" width="50" height="16" rx="3" fill="#f5deb3" stroke="#8b5a2b" stroke-width="1.5"/>
+<text x="755" y="138" font-size="10" text-anchor="middle" font-weight="600" fill="#8b5a2b" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >220 Ω</text>
+<line x1="780" y1="150" x2="820" y2="150" stroke="#d92d20" stroke-width="3"/>
+<circle cx="832" cy="150" r="12" fill="#d92d20" stroke="#111827" stroke-width="2"/>
+<line x1="844" y1="150" x2="1040" y2="150" stroke="#6b7280" stroke-width="2.5"/>
+<text x="858" y="143" font-size="11" text-anchor="start" font-weight="500" fill="#374151" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >LED vermelho</text>
+<circle cx="680" cy="190" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="668" y="194" font-size="12" text-anchor="end" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >D3</text>
+<line x1="680" y1="190" x2="730" y2="190" stroke="#eab308" stroke-width="3"/>
+<rect x="730" y="182" width="50" height="16" rx="3" fill="#f5deb3" stroke="#8b5a2b" stroke-width="1.5"/>
+<text x="755" y="178" font-size="10" text-anchor="middle" font-weight="600" fill="#8b5a2b" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >220 Ω</text>
+<line x1="780" y1="190" x2="820" y2="190" stroke="#eab308" stroke-width="3"/>
+<circle cx="832" cy="190" r="12" fill="#eab308" stroke="#111827" stroke-width="2"/>
+<line x1="844" y1="190" x2="1040" y2="190" stroke="#6b7280" stroke-width="2.5"/>
+<text x="858" y="183" font-size="11" text-anchor="start" font-weight="500" fill="#374151" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >LED amarelo</text>
+<circle cx="680" cy="230" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="668" y="234" font-size="12" text-anchor="end" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >D4</text>
+<line x1="680" y1="230" x2="730" y2="230" stroke="#16a34a" stroke-width="3"/>
+<rect x="730" y="222" width="50" height="16" rx="3" fill="#f5deb3" stroke="#8b5a2b" stroke-width="1.5"/>
+<text x="755" y="218" font-size="10" text-anchor="middle" font-weight="600" fill="#8b5a2b" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >220 Ω</text>
+<line x1="780" y1="230" x2="820" y2="230" stroke="#16a34a" stroke-width="3"/>
+<circle cx="832" cy="230" r="12" fill="#16a34a" stroke="#111827" stroke-width="2"/>
+<line x1="844" y1="230" x2="1040" y2="230" stroke="#6b7280" stroke-width="2.5"/>
+<text x="858" y="223" font-size="11" text-anchor="start" font-weight="500" fill="#374151" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >LED verde</text>
+<circle cx="680" cy="330" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="668" y="334" font-size="12" text-anchor="end" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >D5</text>
+<line x1="680" y1="330" x2="730" y2="330" stroke="#d92d20" stroke-width="3"/>
+<rect x="730" y="322" width="50" height="16" rx="3" fill="#f5deb3" stroke="#8b5a2b" stroke-width="1.5"/>
+<text x="755" y="318" font-size="10" text-anchor="middle" font-weight="600" fill="#8b5a2b" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >220 Ω</text>
+<line x1="780" y1="330" x2="820" y2="330" stroke="#d92d20" stroke-width="3"/>
+<circle cx="832" cy="330" r="12" fill="#d92d20" stroke="#111827" stroke-width="2"/>
+<line x1="844" y1="330" x2="1040" y2="330" stroke="#6b7280" stroke-width="2.5"/>
+<text x="858" y="323" font-size="11" text-anchor="start" font-weight="500" fill="#374151" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >LED vermelho</text>
+<circle cx="680" cy="370" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="668" y="374" font-size="12" text-anchor="end" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >D6</text>
+<line x1="680" y1="370" x2="730" y2="370" stroke="#eab308" stroke-width="3"/>
+<rect x="730" y="362" width="50" height="16" rx="3" fill="#f5deb3" stroke="#8b5a2b" stroke-width="1.5"/>
+<text x="755" y="358" font-size="10" text-anchor="middle" font-weight="600" fill="#8b5a2b" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >220 Ω</text>
+<line x1="780" y1="370" x2="820" y2="370" stroke="#eab308" stroke-width="3"/>
+<circle cx="832" cy="370" r="12" fill="#eab308" stroke="#111827" stroke-width="2"/>
+<line x1="844" y1="370" x2="1040" y2="370" stroke="#6b7280" stroke-width="2.5"/>
+<text x="858" y="363" font-size="11" text-anchor="start" font-weight="500" fill="#374151" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >LED amarelo</text>
+<circle cx="680" cy="410" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="668" y="414" font-size="12" text-anchor="end" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >D7</text>
+<line x1="680" y1="410" x2="730" y2="410" stroke="#16a34a" stroke-width="3"/>
+<rect x="730" y="402" width="50" height="16" rx="3" fill="#f5deb3" stroke="#8b5a2b" stroke-width="1.5"/>
+<text x="755" y="398" font-size="10" text-anchor="middle" font-weight="600" fill="#8b5a2b" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >220 Ω</text>
+<line x1="780" y1="410" x2="820" y2="410" stroke="#16a34a" stroke-width="3"/>
+<circle cx="832" cy="410" r="12" fill="#16a34a" stroke="#111827" stroke-width="2"/>
+<line x1="844" y1="410" x2="1040" y2="410" stroke="#6b7280" stroke-width="2.5"/>
+<text x="858" y="403" font-size="11" text-anchor="start" font-weight="500" fill="#374151" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >LED verde</text>
+<line x1="1040" y1="140" x2="1040" y2="424" stroke="#111827" stroke-width="5"/>
+<text x="1040" y="444" font-size="12" text-anchor="middle" font-weight="700" fill="#111827" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >GND</text>
+<text x="1040" y="458" font-size="10" text-anchor="middle" font-weight="400" fill="#6b7280" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >(trilha –)</text>
+<text x="860" y="452" font-size="10" text-anchor="middle" font-weight="400" fill="#6b7280" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >LED: ânodo (perna longa) → resistor · cátodo → GND</text>
+<line x1="450" y1="600" x2="450" y2="670" stroke="#1f6feb" stroke-width="3"/>
+<line x1="490" y1="600" x2="490" y2="670" stroke="#1f6feb" stroke-width="3"/>
+<circle cx="450" cy="600" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="450" y="590" font-size="12" text-anchor="middle" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >A4</text>
+<circle cx="490" cy="600" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="490" y="590" font-size="12" text-anchor="middle" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >A5</text>
+<rect x="395" y="670" width="160" height="72" rx="8" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2"/>
+<text x="475" y="700" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >LCD 16×2 com</text>
+<text x="475" y="716" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >módulo I²C (0x27)</text>
+<text x="475" y="734" font-size="10" text-anchor="middle" font-weight="400" fill="#6b7280" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >VCC→5V · GND→GND</text>
+<text x="444" y="664" font-size="10" text-anchor="end" font-weight="700" fill="#1f6feb" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >SDA</text>
+<text x="496" y="664" font-size="10" text-anchor="start" font-weight="700" fill="#1f6feb" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >SCL</text>
+<line x1="590" y1="600" x2="590" y2="670" stroke="#0b8a7a" stroke-width="3"/>
+<line x1="640" y1="600" x2="640" y2="670" stroke="#0b8a7a" stroke-width="3"/>
+<circle cx="590" cy="600" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="590" y="590" font-size="12" text-anchor="middle" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >A1</text>
+<circle cx="640" cy="600" r="5" fill="#fcd34d" stroke="#92400e" stroke-width="1.5"/><text x="640" y="590" font-size="12" text-anchor="middle" font-weight="700" fill="#ffffff" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >A0</text>
+<rect x="572" y="630" width="36" height="16" rx="3" fill="#f5deb3" stroke="#8b5a2b" stroke-width="1.5"/>
+<text x="560" y="642" font-size="10" text-anchor="end" font-weight="600" fill="#8b5a2b" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >1k+2k</text>
+<rect x="570" y="670" width="260" height="72" rx="8" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2"/>
+<text x="700" y="698" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >ESP-01 (ESP8266) — Wi-Fi</text>
+<text x="700" y="714" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >ponte serial → MQTT / Internet</text>
+<text x="700" y="732" font-size="10" text-anchor="middle" font-weight="400" fill="#6b7280" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >VCC→3,3 V* · GND→GND · CH_PD→3,3 V</text>
+<text x="584" y="664" font-size="10" text-anchor="end" font-weight="700" fill="#0b8a7a" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >RX</text>
+<text x="646" y="664" font-size="10" text-anchor="start" font-weight="700" fill="#0b8a7a" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >TX</text>
+<text x="662" y="612" font-size="10" text-anchor="start" font-weight="400" fill="#6b7280" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >SoftwareSerial 9600</text>
+<text x="716" y="664" font-size="10" text-anchor="middle" font-weight="400" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" ></text>
+<text x="40" y="548" font-size="12" text-anchor="start" font-weight="700" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Cores dos fios</text>
+<line x1="40" y1="568" x2="70" y2="568" stroke="#e07b00" stroke-width="4"/>
+<text x="80" y="572" font-size="11" text-anchor="start" font-weight="400" fill="#374151" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Sensor IR (contagem)</text>
+<line x1="40" y1="588" x2="70" y2="588" stroke="#7b3fe4" stroke-width="4"/>
+<text x="80" y="592" font-size="11" text-anchor="start" font-weight="400" fill="#374151" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >HC-SR04 (fila parada)</text>
+<line x1="40" y1="608" x2="70" y2="608" stroke="#1f6feb" stroke-width="4"/>
+<text x="80" y="612" font-size="11" text-anchor="start" font-weight="400" fill="#374151" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >I²C (LCD)</text>
+<line x1="40" y1="628" x2="70" y2="628" stroke="#0b8a7a" stroke-width="4"/>
+<text x="80" y="632" font-size="11" text-anchor="start" font-weight="400" fill="#374151" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Serial (ESP-01)</text>
+<rect x="40" y="652" width="320" height="100" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="52" y="672" font-size="11" text-anchor="start" font-weight="700" fill="#78350f" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Alimentação e cuidados:</text>
+<text x="52" y="689" font-size="11" text-anchor="start" font-weight="400" fill="#78350f" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >• Todos os VCC (exceto ESP-01) → 5 V; GND comum.</text>
+<text x="52" y="706" font-size="11" text-anchor="start" font-weight="400" fill="#78350f" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >• *ESP-01 usa 3,3 V (≥300 mA, ex.: adaptador AMS1117).</text>
+<text x="52" y="723" font-size="11" text-anchor="start" font-weight="400" fill="#78350f" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >• Arduino TX (A1) → ESP RX: divisor 1k/2k (5 V → 3,3 V).</text>
+<text x="52" y="740" font-size="11" text-anchor="start" font-weight="400" fill="#78350f" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >• Um resistor de 220 Ω por LED. Nunca LED direto no pino.</text>
+</svg></div>
+      </div>
+      <div class="two">
+        <div class="card">
+          <h2 style="margin-bottom:8px">Pinagem</h2>
+          <div class="tbl-scroll"><table>
+            <thead><tr><th>Componente</th><th>Pino</th><th>Função</th></tr></thead>
+            <tbody>
+              <tr><td>LED vermelho / amarelo / verde — Avenida</td><td><code>D2 · D3 · D4</code></td><td>Atuador: sinal da avenida (resistor 220 Ω em cada)</td></tr>
+              <tr><td>LED vermelho / amarelo / verde — Rua</td><td><code>D5 · D6 · D7</code></td><td>Atuador: sinal da rua transversal</td></tr>
+              <tr><td>Sensor IR FC-51 — Avenida</td><td><code>D8</code></td><td>Conta cada carro que chega</td></tr>
+              <tr><td>Sensor IR FC-51 — Rua</td><td><code>D9</code></td><td>Conta cada carro que chega</td></tr>
+              <tr><td>HC-SR04 — Avenida</td><td><code>D10</code> TRIG · <code>D11</code> ECHO</td><td>Detecta carro parado na linha de retenção</td></tr>
+              <tr><td>HC-SR04 — Rua</td><td><code>A2</code> TRIG · <code>A3</code> ECHO</td><td>Detecta carro parado na linha de retenção</td></tr>
+              <tr><td>LCD 16×2 com módulo I²C</td><td><code>A4</code> SDA · <code>A5</code> SCL</td><td>Painel local: fase, contagem e fila</td></tr>
+              <tr><td>ESP-01 (ESP8266)</td><td><code>A1</code> TX · <code>A0</code> RX</td><td>Wi-Fi: envia o JSON ao MQTT (divisor 1k/2k no RX do ESP)</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <h2 style="margin-bottom:8px">Lista de componentes</h2>
+          <ul class="rules">
+            <li>1 × Arduino UNO (microcontrolador ATmega328P)</li>
+            <li>2 × sensor infravermelho FC-51 (contagem de veículos)</li>
+            <li>2 × sensor ultrassônico HC-SR04 (fila parada)</li>
+            <li>6 × LED (2 vermelhos, 2 amarelos, 2 verdes) + 6 × resistor 220 Ω</li>
+            <li>1 × display LCD 16×2 com módulo I²C</li>
+            <li>1 × ESP-01 (ESP8266) com adaptador 3,3 V, 1 × resistor 1 kΩ e 1 × 2 kΩ</li>
+            <li>1 × protoboard e jumpers; fonte 5 V</li>
+            <li>Bibliotecas: LiquidCrystal_I2C, Wire, SoftwareSerial (Arduino) e PubSubClient (ESP)</li>
+          </ul>
+          <p class="note">Todos os VCC vão ao 5 V (exceto o ESP-01, que usa 3,3 V) e todos os GND ao GND comum.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== LÓGICA ===================== -->
+  <section id="panel-logica" role="tabpanel" aria-labelledby="tab-logica" hidden>
+    <div class="two">
+      <div class="card">
+        <h2 style="margin-bottom:12px">Fluxograma</h2>
+        <div class="diagram-wrap"><svg class="diagram flow" role="img" aria-label="Fluxograma de decisão do semáforo inteligente" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 1010" >
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#374151"/></marker></defs>
+<rect width="820" height="1010" fill="#ffffff"/>
+<text x="40" y="38" font-size="21" text-anchor="start" font-weight="700" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Fluxograma — como o semáforo decide</text>
+<rect x="135.0" y="61.0" width="330" height="54" rx="27" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/><text x="300" y="84.125" font-size="12.5" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >INÍCIO  (setup)</text>
+<text x="300" y="100.625" font-size="12.5" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >LEDs · LCD · Wi-Fi · 2 s tudo vermelho</text>
+<rect x="120.0" y="143.0" width="360" height="58" rx="8" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/><text x="300" y="168.125" font-size="12.5" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Ler sensores</text>
+<text x="300" y="184.625" font-size="12.5" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >IR conta chegadas · HC-SR04 detecta carro parado</text>
+<rect x="120.0" y="223.0" width="360" height="58" rx="8" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/><text x="300" y="248.125" font-size="12.5" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Atualizar contadores</text>
+<text x="300" y="264.625" font-size="12.5" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >esperando[via] · tempo de espera · veículos/min</text>
+<polygon points="300,314.0 490.0,366 300,418.0 110.0,366" fill="#fef3c7" stroke="#d97706" stroke-width="2"/><text x="300" y="362.2" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >O verde atual já durou</text>
+<text x="300" y="378.2" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >pelo menos VERDE_MIN (8 s)?</text>
+<polygon points="300,448.0 490.0,500 300,552.0 110.0,500" fill="#fef3c7" stroke="#d97706" stroke-width="2"/><text x="300" y="496.2" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Há veículos esperando na via</text>
+<text x="300" y="512.2" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >vermelha (e pressão suficiente)?</text>
+<polygon points="300,584.0 510.0,640 300,696.0 90.0,640" fill="#fef3c7" stroke="#d97706" stroke-width="2"/><text x="300" y="636.2" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Fluxo da via verde acabou, tempo ≥ alvo,</text>
+<text x="300" y="652.2" font-size="12" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >tempo ≥ máx. (40 s) ou espera &gt; 60 s?</text>
+<rect x="120.0" y="733.0" width="360" height="58" rx="8" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/><text x="300" y="758.125" font-size="12.5" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Amarelo 3 s  →  todo vermelho 2 s</text>
+<text x="300" y="774.625" font-size="12.5" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >(limpa o cruzamento com segurança)</text>
+<rect x="120.0" y="823.0" width="360" height="58" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/><text x="300" y="848.125" font-size="12.5" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Abrir o verde da outra via</text>
+<text x="300" y="864.625" font-size="12.5" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >alvo = 8 s + 2 s × veículos na fila (máx. 40 s)</text>
+<rect x="120.0" y="913.0" width="360" height="58" rx="8" fill="#fce7f3" stroke="#db2777" stroke-width="2"/><text x="300" y="938.125" font-size="12.5" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Atualizar LCD e enviar JSON a cada 5 s</text>
+<text x="300" y="954.625" font-size="12.5" text-anchor="middle" font-weight="600" fill="#1f2937" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >Serial → ESP-01 → Wi-Fi → MQTT → painel</text>
+<line x1="300" y1="115" x2="300" y2="143" stroke="#374151" stroke-width="2" marker-end="url(#ar)"/>
+<line x1="300" y1="201" x2="300" y2="223" stroke="#374151" stroke-width="2" marker-end="url(#ar)"/>
+<line x1="300" y1="281" x2="300" y2="314" stroke="#374151" stroke-width="2" marker-end="url(#ar)"/>
+<line x1="300" y1="418" x2="300" y2="448" stroke="#374151" stroke-width="2" marker-end="url(#ar)"/><text x="310" y="437.0" font-size="12" text-anchor="start" font-weight="700" fill="#b45309" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >sim</text>
+<line x1="300" y1="552" x2="300" y2="584" stroke="#374151" stroke-width="2" marker-end="url(#ar)"/><text x="310" y="572.0" font-size="12" text-anchor="start" font-weight="700" fill="#b45309" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >sim</text>
+<line x1="300" y1="696" x2="300" y2="733" stroke="#374151" stroke-width="2" marker-end="url(#ar)"/><text x="310" y="718.5" font-size="12" text-anchor="start" font-weight="700" fill="#b45309" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >sim</text>
+<line x1="300" y1="791" x2="300" y2="823" stroke="#374151" stroke-width="2" marker-end="url(#ar)"/>
+<line x1="300" y1="881" x2="300" y2="913" stroke="#374151" stroke-width="2" marker-end="url(#ar)"/>
+<line x1="490" y1="366" x2="640" y2="366" stroke="#374151" stroke-width="2"/>
+<text x="500" y="360" font-size="12" text-anchor="start" font-weight="700" fill="#b45309" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >não</text>
+<line x1="490" y1="500" x2="640" y2="500" stroke="#374151" stroke-width="2"/>
+<text x="500" y="494" font-size="12" text-anchor="start" font-weight="700" fill="#b45309" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >não</text>
+<line x1="510" y1="640" x2="640" y2="640" stroke="#374151" stroke-width="2"/>
+<text x="520" y="634" font-size="12" text-anchor="start" font-weight="700" fill="#b45309" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >não</text>
+<line x1="640" y1="640" x2="640" y2="172" stroke="#374151" stroke-width="2"/>
+<line x1="640" y1="172" x2="480" y2="172" stroke="#374151" stroke-width="2" marker-end="url(#ar)"/>
+<text x="652" y="440" font-size="12" text-anchor="start" font-weight="600" fill="#6b7280" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >mantém a</text>
+<text x="652" y="456" font-size="12" text-anchor="start" font-weight="600" fill="#6b7280" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >fase atual e</text>
+<text x="652" y="472" font-size="12" text-anchor="start" font-weight="600" fill="#6b7280" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >volta a ler</text>
+<text x="652" y="488" font-size="12" text-anchor="start" font-weight="600" fill="#6b7280" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >os sensores</text>
+<line x1="120" y1="942" x2="50" y2="942" stroke="#374151" stroke-width="2"/>
+<line x1="50" y1="942" x2="50" y2="172" stroke="#374151" stroke-width="2"/>
+<line x1="50" y1="172" x2="120" y2="172" stroke="#374151" stroke-width="2" marker-end="url(#ar)"/>
+<text x="58" y="920" font-size="12" text-anchor="start" font-weight="600" fill="#6b7280" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >repete</text>
+<text x="58" y="936" font-size="12" text-anchor="start" font-weight="600" fill="#6b7280" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" >para sempre</text>
+</svg></div>
+      </div>
+      <div class="stack">
+        <div class="card">
+          <h2>Regras de decisão</h2>
+          <ul class="rules">
+            <li>A avenida é a via preferencial: fica verde enquanto a rua não tem fila.</li>
+            <li>A rua abre quando 2 ou mais veículos esperam (ou 1 espera mais de 15 s) e o fluxo da avenida diminuiu: nenhum carro chegou nos últimos 3 s, ou o tempo-alvo acabou.</li>
+            <li>Tempo-alvo do verde = 8 s + 2 s × veículos na fila, no máximo 40 s. Cada carro que chega durante o verde soma mais 2 s.</li>
+            <li>A rua fecha assim que a fila acaba.</li>
+            <li>Segurança: amarelo de 3 s e todo vermelho de 2 s em toda troca.</li>
+            <li>Nenhuma via espera mais de 60 s: passado esse tempo a troca é forçada.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h2 style="margin-bottom:8px">Condição identificada, ação do sistema</h2>
+          <div class="tbl-scroll"><table>
+            <thead><tr><th>Condição</th><th>O que acontece</th></tr></thead>
+            <tbody>
+              <tr><td>Avenida com fluxo intenso, rua vazia</td><td>Avenida permanece verde (até 40 s por ciclo)</td></tr>
+              <tr><td>2 ou mais carros esperando na rua</td><td>Avenida cede após o fluxo diminuir; rua recebe verde proporcional à fila</td></tr>
+              <tr><td>Fila da rua esvaziou</td><td>Rua fecha antes do tempo-alvo e a avenida volta ao verde</td></tr>
+              <tr><td>Madrugada, quase sem carros</td><td>Avenida fica verde; a rua abre só quando alguém chega</td></tr>
+              <tr><td>Uma via esperou mais de 60 s</td><td>Troca forçada, sem esperar o fluxo diminuir</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <h2 style="margin-bottom:8px">Parâmetros (iguais no sketch Arduino)</h2>
+          <div class="tbl-scroll"><table>
+            <tbody>
+              <tr><td>Verde mínimo / máximo</td><td class="num">8 s / 40 s</td></tr>
+              <tr><td>Amarelo / todo vermelho</td><td class="num">3 s / 2 s</td></tr>
+              <tr><td>Tempo por veículo da fila</td><td class="num">2 s</td></tr>
+              <tr><td>Fim de fluxo (sem chegadas)</td><td class="num">3 s</td></tr>
+              <tr><td>Carro parado detectado pelo HC-SR04</td><td class="num">&lt; 15 cm por 1,5 s</td></tr>
+              <tr><td>Plano fixo usado na comparação</td><td class="num">20 s / 20 s</td></tr>
+            </tbody>
+          </table></div>
+          <p class="note">Dados coletados: veículos contados por via, veículos esperando, fluxo em veículos por minuto, fase do semáforo, tempo de verde e presença de fila. Modelo da simulação: carros seguem o Intelligent Driver Model e a capacidade de uma faixa fica em cerca de 33 veículos por minuto.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+/* Nucleo da simulacao do SemaforoSmart.
+ * Reproduz, em JavaScript, a MESMA logica do sketch Arduino (semaforo_smart.ino)
+ * e um modelo de transito (IDM - Intelligent Driver Model) para os carros. */
+(function (root) {
+  'use strict';
+
+  // Parametros do controlador (iguais ao sketch Arduino, em segundos)
+  const CFG = {
+    VERDE_MIN: 8, VERDE_MAX: 40, AMARELO: 3, TODO_VERMELHO: 2,
+    T_VEIC: 2, LACUNA: 3, ESPERA_MAX: 60, FILA_T: 1.5,
+    MIN_FILA: 2, ESPERA_CEDER: 15,        // a avenida so cede com >=2 carros esperando (ou 1 carro esperando >15 s)
+    FIXO_VERDE: 20                      // plano fixo: 20 s para cada via
+  };
+  // Modelo de carro (unidades: pixels e segundos)
+  const P = { V0: 70, A: 50, B: 90, T: 1.0, S0: 6, LEN: 30 };
+  // Geometria (coordenada s ao longo da via; mesma para as duas vias)
+  const G = { STOP: 399, BOX_END: 495, IR: 180, SPAWN: -40, END: [940, 780] };
+
+  const NOME_FASE = {
+    AV_V: 'AV_VERDE', AV_A: 'AV_AMARELO', TV1: 'VERMELHO_1',
+    RU_V: 'RU_VERDE', RU_A: 'RU_AMARELO', TV2: 'VERMELHO_2'
+  };
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  function idm(v, gap, dv) {
+    const sStar = P.S0 + Math.max(0, v * P.T + v * dv / (2 * Math.sqrt(P.A * P.B)));
+    const g = Math.max(gap, 0.5);
+    return P.A * (1 - Math.pow(v / P.V0, 4) - Math.pow(sStar / g, 2));
+  }
+
+  class Sim {
+    constructor(mode, seed, rates) {
+      this.mode = mode;                       // 'smart' | 'fixed'
+      this.rngs = [mulberry32(seed), mulberry32(seed + 7919)];
+      this.rates = [rates.av, rates.ru];      // veiculos por minuto
+      this.t = 0; this.nextId = 1;
+      this.road = [0, 1].map(() => ({
+        cars: [], pend: [], next: Infinity,
+        total: 0, esperando: 0, janela: 0, vpm: 0, ultima: -999,
+        inicioEsp: null, fila: false, filaT: 0, flash: -99,
+        passed: 0, delaySum: 0, maxQueue: 0, queue: 0
+      }));
+      this.phase = 'AV_V'; this.phaseStart = 0; this.alvo = CFG.VERDE_MIN;
+      this.cycles = 1; this.tJanela = 0; this.tLog = 0; this.log = [];
+      this.setRates(rates.av, rates.ru);
+    }
+
+    setRates(av, ru) {
+      this.rates = [av, ru];
+      for (let r = 0; r < 2; r++) this.road[r].next = this._draw(r, this.t);
+    }
+    _draw(r, from) {
+      const lam = this.rates[r] / 60;
+      if (lam <= 0) return Infinity;
+      return from - Math.log(1 - this.rngs[r]()) / lam;
+    }
+
+    color(r) {
+      const p = this.phase;
+      if (r === 0) return p === 'AV_V' ? 'G' : p === 'AV_A' ? 'Y' : 'R';
+      return p === 'RU_V' ? 'G' : p === 'RU_A' ? 'Y' : 'R';
+    }
+
+    step(dt) {
+      this.t += dt;
+      for (let r = 0; r < 2; r++) {
+        const rd = this.road[r];
+        while (this.t >= rd.next) { rd.pend.push(rd.next); rd.next = this._draw(r, rd.next); }
+        if (rd.pend.length) {
+          const last = rd.cars[rd.cars.length - 1];
+          if (!last || last.s - P.LEN > G.SPAWN + P.S0 + 14) {
+            const tArr = rd.pend.shift();
+            rd.cars.push({
+              id: this.nextId++, s: G.SPAWN, prev: G.SPAWN,
+              v: last ? Math.min(P.V0 * 0.7, last.v + 8) : P.V0 * 0.7,
+              stopT: 0, pre: this.t - tArr, done: false
+            });
+          }
+        }
+      }
+      this._move(dt);
+      this._control();
+    }
+
+    _move(dt) {
+      for (let r = 0; r < 2; r++) {
+        const rd = this.road[r], light = this.color(r), cars = rd.cars;
+        let present = false, stopped = 0;
+        for (let i = 0; i < cars.length; i++) {
+          const c = cars[i], lead = cars[i - 1];
+          c.prev = c.s;
+          let a = P.A * (1 - Math.pow(c.v / P.V0, 4));
+          if (lead) a = Math.min(a, idm(c.v, lead.s - P.LEN - c.s, c.v - lead.v));
+          if (c.s <= G.STOP && light !== 'G') {
+            const gap = G.STOP - c.s;
+            let must = true;
+            if (light === 'Y') must = (c.v * c.v) / (2 * Math.max(gap, 0.1)) <= P.B * 0.8;
+            if (must) a = Math.min(a, idm(c.v, gap, c.v));
+          }
+          a = Math.max(a, -300);
+          c.v = Math.max(0, c.v + a * dt);
+          c.s += c.v * dt;
+          if (lead && c.s > lead.s - P.LEN - 1) { c.s = lead.s - P.LEN - 1; c.v = Math.min(c.v, lead.v); }
+
+          if (c.s <= G.STOP && c.v < 3) c.stopT += dt;
+          if (c.prev < G.IR && c.s >= G.IR) this._chegada(r);           // sensor IR
+          if (!c.done && c.s >= G.BOX_END) { c.done = true; rd.passed++; rd.delaySum += c.pre + c.stopT; }
+          if (c.s >= G.STOP - 48 && c.s <= G.STOP + 2 && c.v < 4) present = true;  // ultrassom
+          if (c.s < G.STOP && c.v < 5) stopped++;
+        }
+        while (cars.length && cars[0].s > G.END[r]) cars.shift();
+        rd.filaT = present ? rd.filaT + dt : 0;
+        rd.fila = rd.filaT >= CFG.FILA_T;
+        rd.queue = stopped + rd.pend.length;
+        rd.maxQueue = Math.max(rd.maxQueue, rd.queue);
+      }
+    }
+
+    _chegada(r) {
+      const rd = this.road[r];
+      rd.total++; rd.janela++; rd.ultima = this.t; rd.flash = this.t;
+      const cor = this.color(r);
+      if (cor === 'R') rd.esperando++;
+      else if (cor === 'G') this.alvo = Math.min(CFG.VERDE_MAX, this.alvo + CFG.T_VEIC);
+    }
+
+    _go(p) {
+      this.phase = p; this.phaseStart = this.t;
+      if (p === 'AV_V' || p === 'RU_V') {
+        const r = p === 'AV_V' ? 0 : 1, rd = this.road[r];
+        if (p === 'AV_V') this.cycles++;
+        this.alvo = this.mode === 'smart'
+          ? Math.min(CFG.VERDE_MAX, CFG.VERDE_MIN + rd.esperando * CFG.T_VEIC)
+          : CFG.FIXO_VERDE;
+        rd.esperando = 0; rd.inicioEsp = null;
+      }
+    }
+
+    _control() {
+      const t = this.t, R = this.road, dt = t - this.phaseStart, p = this.phase;
+      const demanda = r => R[r].esperando > 0 || R[r].fila;
+      const espera = r => R[r].inicioEsp == null ? 0 : t - R[r].inicioEsp;
+      const acabou = r => dt >= this.alvo || ((t - R[r].ultima) >= CFG.LACUNA && !R[r].fila);
+
+      for (let r = 0; r < 2; r++)
+        if (this.color(r) === 'R' && demanda(r) && R[r].inicioEsp == null) R[r].inicioEsp = t;
+
+      if (t - this.tJanela >= 60) {
+        this.tJanela = t;
+        for (let r = 0; r < 2; r++) { R[r].vpm = R[r].janela; R[r].janela = 0; }
+      }
+      if (t - this.tLog >= 5) { this.tLog = t; this._logLinha(dt); }
+
+      if (this.mode === 'fixed') {
+        if (p === 'AV_V' && dt >= CFG.FIXO_VERDE) this._go('AV_A');
+        else if (p === 'RU_V' && dt >= CFG.FIXO_VERDE) this._go('RU_A');
+      } else {
+        const pressao = R[1].esperando >= CFG.MIN_FILA || espera(1) >= CFG.ESPERA_CEDER;
+        if (p === 'AV_V' && dt >= CFG.VERDE_MIN && demanda(1) &&
+            ((pressao && acabou(0)) || dt >= CFG.VERDE_MAX || espera(1) >= CFG.ESPERA_MAX)) this._go('AV_A');
+        else if (p === 'RU_V' && dt >= CFG.VERDE_MIN && (acabou(1) || dt >= CFG.VERDE_MAX)) this._go('RU_A');
+      }
+      if (p === 'AV_A' && dt >= CFG.AMARELO) this._go('TV1');
+      else if (p === 'TV1' && dt >= CFG.TODO_VERMELHO) this._go('RU_V');
+      else if (p === 'RU_A' && dt >= CFG.AMARELO) this._go('TV2');
+      else if (p === 'TV2' && dt >= CFG.TODO_VERMELHO) this._go('AV_V');
+    }
+
+    _logLinha(dt) {
+      const R = this.road;
+      const s = '{"fase":"' + NOME_FASE[this.phase] + '","vAv":' + R[0].total + ',"vRu":' + R[1].total +
+        ',"eAv":' + R[0].esperando + ',"eRu":' + R[1].esperando +
+        ',"vpmAv":' + R[0].vpm + ',"vpmRu":' + R[1].vpm + ',"verde_s":' + Math.floor(dt) + '}';
+      this.log.push(s);
+      if (this.log.length > 30) this.log.shift();
+    }
+
+    /* Metricas. A espera media considera TODOS os veiculos que chegaram
+       (atendidos + ainda no sistema), para nao favorecer quem so atende poucos. */
+    stats() {
+      const out = { cycles: this.cycles, road: [] };
+      let sum = 0, n = 0, passed = 0;
+      for (let r = 0; r < 2; r++) {
+        const rd = this.road[r];
+        let s = rd.delaySum, k = rd.passed;
+        for (const c of rd.cars) if (!c.done) { s += c.pre + c.stopT; k++; }
+        for (const ta of rd.pend) { s += this.t - ta; k++; }
+        out.road.push({ avg: k ? s / k : 0, passed: rd.passed, queue: rd.queue, maxQueue: rd.maxQueue });
+        sum += s; n += k; passed += rd.passed;
+      }
+      out.avg = n ? sum / n : 0;
+      out.passed = passed;
+      out.queue = out.road[0].queue + out.road[1].queue;
+      return out;
+    }
+  }
+
+  const api = { Sim, CFG, P, G, NOME_FASE };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.SemaforoSim = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+(function () {
+  'use strict';
+  var S = window.SemaforoSim, Sim = S.Sim, CFG = S.CFG, NOME = S.NOME_FASE;
+  var $ = function (id) { return document.getElementById(id); };
+
+  var seed = 2026, rates = { av: 16, ru: 5 }, view = 'smart', speed = 2, paused = false, tab = 'simulacao';
+  var sims, chartData, lastSample;
+  var STEP = 0.05;
+
+  function reset() {
+    sims = { smart: new Sim('smart', seed, rates), fixed: new Sim('fixed', seed, rates) };
+    chartData = []; lastSample = 0;
+  }
+  reset();
+
+  /* ---------- cores lidas dos tokens CSS ---------- */
+  var COL = {};
+  function readColors() {
+    var cs = getComputedStyle(document.documentElement);
+    var g = function (n) { return cs.getPropertyValue(n).trim(); };
+    COL = { block: g('--block'), road: g('--road'), mark: g('--mark'), accent: g('--accent'), warn: g('--warn'),
+            purple: g('--purple'), fg: g('--fg'), muted: g('--muted'), line: g('--line') };
+  }
+  readColors();
+  try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors); } catch (e) {}
+  try { new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] }); } catch (e) {}
+
+  /* ---------- desenho do cruzamento ---------- */
+  var cv = $('stage'), ctx = cv.getContext('2d'), W = 900, H = 620;
+  (function () {
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  })();
+  var CAR_COLORS = ['#e4572e', '#f2c14e', '#4cc2e2', '#9b8ad6', '#f1eee0', '#6bbf59', '#ef8cc0', '#c3d0d8'];
+
+  function rr(x, y, w, h, r) {
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h);
+  }
+  function ln(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+
+  function head(x, y, cor, label) {
+    ctx.fillStyle = '#0d1316'; rr(x, y, 20, 56, 6); ctx.fill();
+    var lamps = [['R', '#ff4b4b', 11], ['Y', '#ffc61a', 28], ['G', '#2ee06f', 45]];
+    for (var i = 0; i < 3; i++) {
+      var on = lamps[i][0] === cor;
+      ctx.beginPath(); ctx.arc(x + 10, y + lamps[i][2], 6, 0, 6.2832);
+      ctx.fillStyle = on ? lamps[i][1] : '#2a3338';
+      ctx.shadowColor = on ? lamps[i][1] : 'transparent'; ctx.shadowBlur = on ? 14 : 0;
+      ctx.fill(); ctx.shadowBlur = 0;
+    }
+    ctx.fillStyle = COL.fg; ctx.font = '700 11px Barlow, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(label, x + 10, y + 70);
+  }
+
+  function draw(sim) {
+    ctx.fillStyle = COL.block; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = COL.road; ctx.fillRect(0, 265, W, 90); ctx.fillRect(405, 0, 90, H);
+
+    // bordas das pistas
+    ctx.strokeStyle = COL.mark; ctx.globalAlpha = 0.55; ctx.lineWidth = 1.5;
+    ln(0, 269, 405, 269); ln(495, 269, W, 269); ln(0, 351, 405, 351); ln(495, 351, W, 351);
+    ln(409, 0, 409, 265); ln(409, 355, 409, H); ln(491, 0, 491, 265); ln(491, 355, 491, H);
+    ctx.globalAlpha = 0.3; ctx.setLineDash([6, 6]); ctx.strokeRect(405, 265, 90, 90); ctx.setLineDash([]);
+    ctx.globalAlpha = 0.85; ctx.fillStyle = COL.mark;
+    for (var y = 271; y < 350; y += 13) ctx.fillRect(386, y, 10, 8);          // faixa de pedestres (avenida)
+    for (var x = 411; x < 490; x += 13) ctx.fillRect(x, 246, 8, 10);          // faixa de pedestres (rua)
+    ctx.globalAlpha = 1;
+    ctx.fillRect(398, 265, 3, 90); ctx.fillRect(405, 258, 90, 3);             // linhas de retenção
+
+    // rótulos das vias
+    ctx.globalAlpha = 0.7; ctx.font = '600 12px Barlow, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('AVENIDA  →', 12, 287); ctx.fillText('RUA TRANSVERSAL  ↓', 413, 18);
+    ctx.globalAlpha = 1;
+
+    // sensores
+    for (var r = 0; r < 2; r++) {
+      var rd = sim.road[r], flash = (sim.t - rd.flash) < 0.35;
+      ctx.strokeStyle = COL.warn; ctx.lineWidth = flash ? 5 : 2; ctx.setLineDash([5, 4]); ctx.globalAlpha = flash ? 1 : 0.8;
+      if (r === 0) ln(180, 265, 180, 355); else ln(405, 40, 495, 40);
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+      ctx.fillStyle = COL.purple; ctx.globalAlpha = rd.fila ? 0.5 : 0.16;
+      if (r === 0) ctx.fillRect(351, 265, 50, 90); else ctx.fillRect(405, 211, 90, 50);
+      ctx.globalAlpha = 1;
+      ctx.font = '600 10px Barlow, sans-serif'; ctx.textAlign = 'left';
+      ctx.fillStyle = COL.warn; if (r === 0) ctx.fillText('IR', 184, 362); else ctx.fillText('IR', 500, 44);
+      ctx.fillStyle = COL.purple; if (r === 0) ctx.fillText('HC-SR04', 351, 362); else ctx.fillText('HC-SR04', 500, 236);
+    }
+
+    // semáforos
+    head(376, 366, sim.color(0), 'AV');
+    head(376, 190, sim.color(1), 'RUA');
+
+    // carros
+    for (r = 0; r < 2; r++) {
+      var cars = sim.road[r].cars, hidden = sim.road[r].pend.length;
+      for (var i = 0; i < cars.length; i++) {
+        var c = cars[i], cx, cy, w, h;
+        if (r === 0) { cx = c.s - 30; cy = 302; w = 30; h = 16; if (c.s < 0) hidden++; }
+        else { cx = 442; cy = c.s - 170; w = 16; h = 30; if (c.s < 140) hidden++; }
+        if (cx > W || cy > H || cx + w < 0 || cy + h < 0) continue;
+        ctx.fillStyle = CAR_COLORS[c.id % CAR_COLORS.length]; rr(cx, cy, w, h, 4); ctx.fill();
+        ctx.fillStyle = 'rgba(10,16,20,.55)';
+        if (r === 0) ctx.fillRect(cx + 19, cy + 2, 6, h - 4); else ctx.fillRect(cx + 2, cy + 19, w - 4, 6);
+        if (c.v < 3 && ((r === 0 && c.s <= 401) || (r === 1 && c.s <= 401))) {   // lanterna de freio
+          ctx.fillStyle = '#ff3b3b';
+          if (r === 0) { ctx.fillRect(cx, cy + 2, 2, 4); ctx.fillRect(cx, cy + h - 6, 2, 4); }
+          else { ctx.fillRect(cx + 2, cy, 4, 2); ctx.fillRect(cx + w - 6, cy, 4, 2); }
+        }
+      }
+      if (hidden > 0) {
+        ctx.fillStyle = COL.fg; ctx.font = '700 12px Barlow, sans-serif'; ctx.textAlign = 'left';
+        if (r === 0) ctx.fillText('+' + hidden + ' fora da tela', 8, 380); else ctx.fillText('+' + hidden + ' fora da tela', 504, 18);
+      }
+    }
+    // etiqueta do modo
+    ctx.fillStyle = COL.fg; ctx.font = '700 15px "Barlow Condensed", Barlow, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(sim.mode === 'smart' ? 'SEMÁFORO INTELIGENTE' : 'SEMÁFORO FIXO · 20 s / 20 s', 12, 600);
+  }
+
+  /* ---------- painel ---------- */
+  var cmpRows = [
+    { k: 'Espera média por veículo', f: function (s) { return s.avg; }, fmt: function (v) { return v.toFixed(1).replace('.', ',') + ' s'; }, better: 'low' },
+    { k: 'Veículos atendidos', f: function (s) { return s.passed; }, fmt: function (v) { return String(Math.round(v)); }, better: 'high' },
+    { k: 'Veículos parados agora', f: function (s) { return s.queue; }, fmt: function (v) { return String(Math.round(v)); }, better: 'low' },
+    { k: 'Maior fila (avenida / rua)', f: function (s) { return s.road[0].maxQueue + s.road[1].maxQueue; },
+      fmt: function (v, s) { return s.road[0].maxQueue + ' / ' + s.road[1].maxQueue; }, better: 'low' }
+  ];
+  var cmpBody = $('cmp');
+  cmpRows.forEach(function (r) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + r.k + '</td><td class="num"></td><td class="num"></td><td class="num delta neu">—</td>';
+    cmpBody.appendChild(tr); r.tr = tr;
+  });
+
+  function setLamps(el, cor) {
+    var is = el.children;
+    is[0].classList.toggle('on', cor === 'R'); is[1].classList.toggle('on', cor === 'Y'); is[2].classList.toggle('on', cor === 'G');
+  }
+  function mmss(t) { var m = Math.floor(t / 60), s = Math.floor(t % 60); return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s; }
+
+  function updatePanel() {
+    var s = sims[view], i;
+    for (i = 0; i < 2; i++) {
+      var rd = s.road[i];
+      $('n' + i).textContent = rd.total; $('e' + i).textContent = rd.esperando;
+      $('f' + i).textContent = s.t < 60 ? '—' : rd.vpm;
+      var p = $('sens' + i); p.textContent = rd.fila ? 'carro parado' : 'fila livre'; p.classList.toggle('on', rd.fila);
+      setLamps($('tl' + i), s.color(i));
+    }
+    var dt = s.t - s.phaseStart, ph = s.phase, tot, cls = '';
+    if (ph === 'AV_V' || ph === 'RU_V') tot = Math.max(s.alvo, dt, 1);
+    else if (ph === 'AV_A' || ph === 'RU_A') { tot = CFG.AMARELO; cls = 'y'; }
+    else { tot = CFG.TODO_VERMELHO; cls = 'r'; }
+    $('phase-name').textContent = NOME[ph];
+    $('phase-time').textContent = Math.floor(dt) + ' s' + ((ph === 'AV_V' || ph === 'RU_V') ? ' · alvo ' + Math.round(s.alvo) + ' s' : '');
+    var bar = $('phase-bar'); bar.style.width = Math.min(100, dt / tot * 100) + '%'; bar.className = cls;
+    $('clock').textContent = 'simulado ' + mmss(s.t);
+    $('status').innerHTML = '<b>' + NOME[ph] + '</b> · ' + Math.floor(dt) + ' s';
+
+    var m = sims.smart.stats(), f = sims.fixed.stats();
+    cmpRows.forEach(function (r) {
+      var fv = r.f(f), mv = r.f(m), tds = r.tr.children;
+      tds[1].textContent = r.fmt(fv, f); tds[2].textContent = r.fmt(mv, m);
+      var d = tds[3];
+      if (fv < 0.5 && mv < 0.5) { d.textContent = '—'; d.className = 'num delta neu'; return; }
+      var pct = fv === 0 ? 0 : (mv - fv) / fv * 100, good = r.better === 'low' ? pct < 0 : pct > 0;
+      d.textContent = (pct > 0 ? '+' : pct < 0 ? '−' : '') + Math.abs(Math.round(pct)) + '%';
+      d.className = 'num delta ' + (Math.abs(pct) < 3 ? 'neu' : good ? 'good' : 'bad');
+    });
+    $('log').textContent = s.log.length ? s.log.slice(-6).join('\n') : 'aguardando primeira leitura…';
+  }
+
+  /* ---------- gráfico ---------- */
+  function drawChart() {
+    var c = $('chart'), x = c.getContext('2d'), dpr = Math.min(2, window.devicePixelRatio || 1);
+    var w = c.clientWidth, h = 120;
+    if (!w) return;
+    if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = h * dpr; }
+    x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, w, h);
+    var maxv = 10; chartData.forEach(function (d) { maxv = Math.max(maxv, d.a, d.b); });
+    maxv = Math.ceil(maxv / 10) * 10;
+    var L = 30, T = 8, B = 18, pw = w - L - 6, ph = h - T - B;
+    x.font = '10px "JetBrains Mono", monospace'; x.textAlign = 'right'; x.fillStyle = COL.muted; x.strokeStyle = COL.line; x.lineWidth = 1;
+    for (var g = 0; g <= 2; g++) {
+      var v = maxv * g / 2, yy = T + ph - ph * g / 2;
+      x.globalAlpha = 0.8; x.beginPath(); x.moveTo(L, yy); x.lineTo(L + pw, yy); x.stroke(); x.globalAlpha = 1;
+      x.fillText(String(Math.round(v)), L - 5, yy + 3);
+    }
+    x.textAlign = 'left'; x.fillText('há 6 min', L, h - 4); x.textAlign = 'right'; x.fillText('agora', L + pw, h - 4);
+    function line(key, color) {
+      if (chartData.length < 2) return;
+      x.strokeStyle = color; x.lineWidth = 2; x.beginPath();
+      chartData.forEach(function (d, i) {
+        var px = L + pw * (i / 119), py = T + ph - ph * d[key] / maxv;
+        if (i === 0) x.moveTo(px, py); else x.lineTo(px, py);
+      });
+      x.stroke();
+      var last = chartData[chartData.length - 1], lx = L + pw * ((chartData.length - 1) / 119), ly = T + ph - ph * last[key] / maxv;
+      x.fillStyle = color; x.beginPath(); x.arc(lx, ly, 3, 0, 6.2832); x.fill();
+    }
+    line('b', COL.warn); line('a', COL.accent);
+  }
+
+  /* ---------- laço principal ---------- */
+  var acc = 0, lastTs = performance.now(), lastPanel = 0;
+  function frame(ts) {
+    var dt = Math.min(0.1, (ts - lastTs) / 1000); lastTs = ts;
+    if (tab === 'simulacao') {
+      if (!paused) {
+        acc += dt * speed; var n = 0;
+        while (acc >= STEP && n < 400) {
+          sims.smart.step(STEP); sims.fixed.step(STEP); acc -= STEP; n++;
+          if (sims.smart.t - lastSample >= 3) {
+            lastSample = sims.smart.t;
+            chartData.push({ a: sims.smart.road[0].queue + sims.smart.road[1].queue, b: sims.fixed.road[0].queue + sims.fixed.road[1].queue });
+            if (chartData.length > 120) chartData.shift();
+          }
+        }
+      }
+      draw(sims[view]);
+      if (ts - lastPanel > 150) { lastPanel = ts; updatePanel(); drawChart(); }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- controles ---------- */
+  function fmtRate(v) { return v + ' veíc/min'; }
+  function syncSliders() {
+    $('r-av').value = rates.av; $('r-ru').value = rates.ru;
+    $('o-av').textContent = fmtRate(rates.av); $('o-ru').textContent = fmtRate(rates.ru);
+  }
+  function onRate() {
+    rates.av = +$('r-av').value; rates.ru = +$('r-ru').value;
+    $('o-av').textContent = fmtRate(rates.av); $('o-ru').textContent = fmtRate(rates.ru);
+    sims.smart.setRates(rates.av, rates.ru); sims.fixed.setRates(rates.av, rates.ru);
+  }
+  $('r-av').addEventListener('input', onRate); $('r-ru').addEventListener('input', onRate);
+
+  function setView(v) {
+    view = v; $('v-smart').setAttribute('aria-pressed', v === 'smart'); $('v-fixed').setAttribute('aria-pressed', v === 'fixed');
+    updatePanel();
+  }
+  $('v-smart').addEventListener('click', function () { setView('smart'); });
+  $('v-fixed').addEventListener('click', function () { setView('fixed'); });
+
+  $('speed').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    speed = +b.dataset.s;
+    Array.prototype.forEach.call($('speed').children, function (x) { x.setAttribute('aria-pressed', x === b); });
+  });
+  $('pause').addEventListener('click', function () { paused = !paused; this.textContent = paused ? 'Continuar' : 'Pausar'; });
+  $('reset').addEventListener('click', function () { seed += 1; reset(); updatePanel(); drawChart(); });
+  $('presets').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    rates.av = +b.dataset.av; rates.ru = +b.dataset.ru; syncSliders(); seed += 1; reset(); updatePanel(); drawChart();
+  });
+
+  /* ---------- abas ---------- */
+  var TABS = ['simulacao', 'circuito', 'logica'];
+  function showTab(t) {
+    tab = t;
+    TABS.forEach(function (n) {
+      $('panel-' + n).hidden = n !== t; $('tab-' + n).setAttribute('aria-selected', n === t);
+    });
+    try { history.replaceState(null, '', '#' + t); } catch (e) {}
+    if (t === 'simulacao') { lastTs = performance.now(); updatePanel(); }
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('[data-tab]'), function (b) {
+    b.addEventListener('click', function () { showTab(b.dataset.tab); });
+  });
+  var h = (location.hash || '').slice(1);
+  if (TABS.indexOf(h) > -1) showTab(h);
+
+  // aquecimento: a simulação já abre com 90 s de tráfego para o painel não nascer vazio
+  for (var i = 0; i < 90 / STEP; i++) {
+    sims.smart.step(STEP); sims.fixed.step(STEP);
+    if (sims.smart.t - lastSample >= 3) {
+      lastSample = sims.smart.t;
+      chartData.push({ a: sims.smart.road[0].queue + sims.smart.road[1].queue, b: sims.fixed.road[0].queue + sims.fixed.road[1].queue });
+    }
+  }
+  syncSliders(); updatePanel();
+  requestAnimationFrame(frame);
+})();
+
+</script>
+
+</body></html>
